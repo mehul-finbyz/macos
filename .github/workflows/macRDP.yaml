@@ -1,0 +1,47 @@
+name: Setup macOS, Install Dependencies, Run PyQt App, and Expose VNC
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup-vnc:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Install Homebrew (if not installed)
+      run: |
+        if ! which brew > /dev/null; then
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        fi
+
+    - name: Install Dependencies (e.g., Python, PyQt, ngrok)
+      run: |
+        brew install python
+        python3 -m venv venv
+        source venv/bin/activate
+        brew install ngrok  # Install ngrok for VNC tunneling
+
+    - name: Set VNC Password (for VNC access)
+      run: |
+        echo "12345" > ~/.vncpass
+        chmod 600 ~/.vncpass
+
+    - name: Start macOS Screen Sharing (VNC Server)
+      run: |
+        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -users $USER -privs -all -clientopts -setvnclegacy -vnclegacy yes
+        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
+
+    - name: Start ngrok (expose VNC port)
+      run: |
+        ngrok tcp 5900 --log=stdout &
+      env:
+        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+
+    - name: Wait for ngrok URL and output it
+      run: |
+        sleep 10  # Wait a few seconds for ngrok to establish the tunnel
+        curl http://127.0.0.1:4040/api/tunnels | python3 -c "import sys, json; print(json.load(sys.stdin)['tunnels'][0]['public_url'])"
+
