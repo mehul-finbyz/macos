@@ -11,22 +11,19 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v3
 
-    - name: Install Homebrew (if not installed)
-      run: |
-        if ! which brew > /dev/null; then
-          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-        fi
+    - name: Check ngrok Installation
+      run: ngrok version
 
     - name: Install Dependencies (e.g., Python, PyQt, ngrok)
       run: |
         brew install python
         python3 -m venv venv
         source venv/bin/activate
-        brew install ngrok  # Install ngrok for VNC tunneling
+        brew install ngrok
 
-    - name: Set VNC Password (for VNC access)
+    - name: Set VNC Password
       run: |
-        echo "12345" > ~/.vncpass
+        echo "123456" > ~/.vncpass
         chmod 600 ~/.vncpass
 
     - name: Start macOS Screen Sharing (VNC Server)
@@ -36,12 +33,20 @@ jobs:
 
     - name: Start ngrok (expose VNC port)
       run: |
-        ngrok tcp 5900 --log=stdout &
+        ngrok tcp 5900 --log=stdout > ngrok.log 2>&1 &
+        sleep 15
+        cat ngrok.log
       env:
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
 
-    - name: Wait for ngrok URL and output it
+    - name: Fetch ngrok Public URL
       run: |
-        sleep 10  # Wait a few seconds for ngrok to establish the tunnel
-        curl http://127.0.0.1:4040/api/tunnels | python3 -c "import sys, json; print(json.load(sys.stdin)['tunnels'][0]['public_url'])"
-
+        for i in {1..10}; do
+          RESPONSE=$(curl -s http://127.0.0.1:4040/api/tunnels | python3 -c "import sys, json; data = sys.stdin.read(); print(json.loads(data)['tunnels'][0]['public_url'])" 2>/dev/null || echo "")
+          if [ -n "$RESPONSE" ]; then
+            echo "ngrok URL: $RESPONSE"
+            break
+          fi
+          echo "Retrying..."
+          sleep 3
+        done
